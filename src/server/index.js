@@ -1,65 +1,54 @@
 const WebSocket = require("ws");
-const redisClient = require("../config/redis");
-const { createPlayer, removePlayer, getPlayer } = require("./player");
-const { handleMessage } = require("./events");
-const universe = require("./universe");
+const { handleConnection } = require('./layers/connection');
 
-const GLOBAL_ROOM = "global_room";
+function createServer() {
+  return new Promise((resolve, reject) => {
+    try {
+      const wss = new WebSocket.Server({ port: 8080 });
+      let serverStarted = false;
 
-const wss = new WebSocket.Server({ port: 8080 });
+      wss.on("error", (error) => {
+        console.error("[SERVER] Erro no WebSocket:", error);
+        if (!serverStarted) {
+          reject(error);
+        }
+      });
 
-wss.on("listening", () => {
-  console.log("Servidor WebSocket rodando na porta 8080");
-});
+      wss.on("listening", () => {
+        console.log("[SERVER] Servidor WebSocket de Matchmaking/Chat rodando na porta 8080");
+        serverStarted = true;
+        resolve(wss);
+      });
 
-wss.on("connection", async (ws) => {
-  console.log("Novo cliente conectado");
+      wss.on("connection", (ws) => {
+        console.log("[SERVER] Nova conexão recebida");
+        handleConnection(ws, wss);
+      });
 
-  // Adiciona o cliente à sala global no Redis
-  const clientId = Date.now() + "-" + Math.random();
-  await redisClient.sAdd(GLOBAL_ROOM, clientId);
-  ws.clientId = clientId;
+      wss.on("close", () => {
+        console.log("[SERVER] Servidor WebSocket encerrado");
+      });
 
-  // Cria o player
-  createPlayer(clientId);
+      // Se não iniciar em 10 segundos, rejeita
+      const timeoutId = setTimeout(() => {
+        if (!serverStarted) {
+          console.error("[SERVER] Timeout ao iniciar servidor WebSocket");
+          wss.close(() => {
+            reject(new Error("Timeout ao iniciar servidor WebSocket"));
+          });
+        }
+      }, 10000);
 
-  // Envia mensagem de boas-vindas
-  ws.send(
-    JSON.stringify({ msg: "Bem-vindo à sala global!", sala: GLOBAL_ROOM }),
-  );
+      // Limpa o timeout se o servidor iniciar com sucesso
+      wss.on("listening", () => {
+        clearTimeout(timeoutId);
+      });
 
-  ws.on("message", (message) => {
-    handleMessage(ws, message);
-  });
-
-  ws.on("close", async () => {
-    // Remove o cliente da sala global ao desconectar
-    await redisClient.sRem(GLOBAL_ROOM, ws.clientId);
-    removePlayer(ws.clientId);
-    console.log("Cliente saiu:", ws.clientId);
-  });
-});
-
-// Função para enviar updates periódicos para todos os clientes conectados
-setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN && ws.clientId) {
-      const player = getPlayer(ws.clientId);
-      if (player) {
-        ws.send(
-          JSON.stringify({
-            type: "update",
-            life: player.life,
-            shield: player.shield,
-            damage: player.damage,
-            speed: player.speed,
-            x: player.x,
-            y: player.y,
-            ms: player.ms,
-            universeSize: universe.getSize(),
-          })
-        );
-      }
+    } catch (error) {
+      console.error("[SERVER] Erro ao criar servidor:", error);
+      reject(error);
     }
   });
-}, 200); // envia a cada 200ms (~5x por segundo)
+}
+
+module.exports = createServer();
