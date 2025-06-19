@@ -1,61 +1,318 @@
-# SocketDestroyer2D
+# ChatSocket - Sistema de Chat em Tempo Real Avançado
 
 ## Descrição
-Jogo multiplayer 2D com universo infinito, naves, atributos e comunicação em tempo real via WebSocket.
+Sistema de chat em tempo real com suporte a salas públicas, mensagens privadas, autenticação permanente e temporária, utilizando WebSocket com otimizações de performance e resiliência.
 
-## Eventos WebSocket
+## 🚀 Funcionalidades Principais
 
-### Enviar para o servidor:
-- `{"type": "move", "dx": <número>, "dy": <número>}`
-  - Move a nave do jogador.
-- `{"type": "ping"}`
-  - Solicita o tempo de resposta (ms).
-- `{"type": "get_status"}`
-  - Solicita os atributos e posição do jogador.
+### Autenticação e Usuários
+- **Usuários Registrados**: Registro permanente com email/senha no PostgreSQL
+- **Usuários Temporários**: Autenticação rápida apenas com username
+- **Sistema de Permissões**: Apenas usuários registrados podem criar salas públicas
+- **Sessões Persistentes**: Login/logout com histórico de atividades
 
-### Recebidos do servidor:
-- `{"type": "update", "x": <número>, "y": <número>, "universeSize": <número>}`
-  - Atualização de posição e tamanho do universo.
-- `{"type": "pong", "ms": <número>}`
-  - Resposta ao ping.
-- `{"type": "status", "life": <número>, "shield": <número>, "damage": <número>, "speed": <número>, "x": <número>, "y": <número>, "ms": <número>, "universeSize": <número>}`
-  - Status completo do jogador.
-- `{"error": <mensagem>}`
-  - Mensagem de erro.
+### Salas e Chat
+- **Salas Públicas**: Criadas por usuários registrados
+- **Sala Especial "match"**: Sala pública para matchmaking (não pode ser criada/removida)
+- **Histórico de Mensagens**: Persistência em MongoDB com cache otimizado
+- **Indicador de Digitação**: Notificação em tempo real
+- **Status de Usuário**: Online, away, busy, offline
 
-## Desenvolvimento
-- Código padronizado com ESLint e Prettier.
-- Testes automatizados com Jest (em breve).
-- Estrutura modular por camadas.
+### Performance e Otimizações
+- **Cache Inteligente**: Cache local + Redis com fallback automático
+- **Batch Processing**: Processamento em lote de mensagens (50 mensagens/5s)
+- **Rate Limiting**: Proteção contra spam e ataques
+- **Sanitização Avançada**: Suporte a HTML seguro e emojis
+- **Connection Pooling**: Gerenciamento eficiente de conexões
+- **Compressão WebSocket**: Redução de tráfego de rede
 
-## Estrutura Modular (Layer-Based)
+### Resiliência e Monitoramento
+- **Watchdog Automático**: Monitoramento e reinício automático
+- **Fallback de Storage**: Cache local quando Redis/MongoDB indisponível
+- **Health Checks**: Verificação contínua de serviços
+- **Recovery Automático**: Reconexão e sincronização de dados
 
+## 📋 Eventos WebSocket
+
+### Autenticação e Registro
+```json
+// Registro permanente
+{"type": "register", "email": "user@example.com", "password": "senha123", "username": "usuario"}
+
+// Login permanente
+{"type": "login", "email": "user@example.com", "password": "senha123"}
+
+// Autenticação temporária
+{"type": "auth", "username": "usuario_temp"}
+```
+
+### Gerenciamento de Salas
+```json
+// Criar sala (apenas usuários registrados)
+{"type": "create_room", "name": "Minha Sala", "description": "Descrição da sala"}
+
+// Listar salas públicas
+{"type": "get_rooms"}
+
+// Entrar em sala
+{"type": "join_room", "room": "room_id"}
+
+// Sair de sala
+{"type": "leave_room", "room": "room_id"}
+```
+
+### Mensagens e Status
+```json
+// Enviar mensagem
+{"type": "message", "content": "Olá, mundo! 😀", "room": "room_id"}
+
+// Atualizar status
+{"type": "status", "status": "away"}
+
+// Indicar digitação
+{"type": "typing", "room": "room_id", "isTyping": true}
+
+// Ping para latência
+{"type": "ping"}
+```
+
+### Respostas do Servidor
+```json
+// Resposta de autenticação
+{"type": "auth_response", "success": true, "message": "Autenticado", "user": {...}}
+
+// Lista de salas
+{"type": "rooms_list", "rooms": [...]}
+
+// Mensagem recebida
+{"type": "message", "from": "usuario", "content": "Olá!", "room": "room_id", "timestamp": 1234567890}
+
+// Status de usuário
+{"type": "user_status", "username": "usuario", "status": "online"}
+
+// Indicador de digitação
+{"type": "typing_status", "room": "room_id", "username": "usuario", "isTyping": true}
+
+// Histórico de mensagens
+{"type": "message_history", "room": "room_id", "messages": [...]}
+
+// Erro
+{"type": "error", "message": "Descrição do erro"}
+```
+
+## 🏗️ Arquitetura
+
+### Camadas do Sistema
 ```
 src/
-  app.js              # Ponto de entrada da aplicação
-  config/
-    redis.js          # Configuração do Redis
-  server/
-    index.js          # Servidor WebSocket
+├── app.js                    # Ponto de entrada da aplicação
+├── config/
+│   ├── postgres.js          # Configuração PostgreSQL (usuários/salas)
+│   ├── redis.js             # Configuração Redis (cache/tempo real)
+│   └── mongo.js             # Configuração MongoDB (histórico)
+├── server/
+│   ├── index.js             # Servidor WebSocket
+│   ├── layers/
+│   │   ├── connection.js    # Gerenciamento de conexões
+│   │   ├── user.js          # Lógica de usuários e mensagens
+│   │   ├── room.js          # Gerenciamento de salas
+│   │   └── match.js         # Sistema de matchmaking
+│   └── utils/
+│       ├── cache.js         # Sistema de cache otimizado
+│       ├── rateLimiter.js   # Rate limiting e proteção
+│       ├── batchProcessor.js # Processamento em lote
+│       ├── sanitizer.js     # Sanitização de mensagens
+│       ├── resilientStorage.js # Storage resiliente
+│       └── migratePostgres.js # Migrations automáticas
+└── watchdog/
+    ├── index.js             # Ponto de entrada do watchdog
+    └── monitor.js           # Monitoramento de serviços
 ```
 
-## Como rodar
+### Banco de Dados
+- **PostgreSQL**: Usuários registrados, salas públicas, permissões
+- **Redis**: Cache de salas, mensagens recentes, filas
+- **MongoDB**: Histórico de mensagens, logs de atividade
 
-1. Instale as dependências:
+## 🛠️ Instalação e Configuração
+
+### Pré-requisitos
+- Node.js 16+
+- PostgreSQL 12+
+- Redis 6+
+- MongoDB 4.4+
+
+### Instalação
    ```bash
+# Clone o repositório
+git clone <repository-url>
+cd socketdestroyer2D
+
+# Instale as dependências
    npm install
-   ```
-2. Crie um arquivo `.env` com as configurações do Redis.
-3. Inicie a aplicação:
-   ```bash
-   npm start
-   ```
 
-O servidor irá rodar na porta 8080.
+# Configure as variáveis de ambiente
+cp .env.example .env
+```
 
-## Melhorias futuras
-- Autenticação JWT
-- Persistência de dados
-- Frontend React
-- Monitoramento e clusterização
-- Docker e CI/CD
+### Configuração do Ambiente
+Crie um arquivo `.env` com as seguintes variáveis:
+
+```env
+# Serviços Externos
+REDIS_EXTERNAL_URL=redis://localhost:6379
+MONGO_EXTERNAL_URL=mongodb://localhost:27017/chatdb
+PG_EXTERNAL_HOST=localhost
+PG_EXTERNAL_PORT=5432
+PG_USER=postgres
+PG_PASSWORD=sua_senha
+PG_DATABASE=chatdb
+
+# Configurações do Servidor
+PORT=8080
+NODE_ENV=development
+```
+
+### Inicialização
+```bash
+# Verificar serviços
+npm run test:check
+
+# Iniciar servidor com watchdog (recomendado)
+npm start
+
+# Iniciar apenas o servidor (sem watchdog)
+npm run start:server
+
+# Iniciar com watchdog (mesmo que npm start)
+npm run start:watchdog
+
+# Executar testes
+npm test
+
+# Executar linting
+npm run lint
+
+# Formatar código
+npm run format
+```
+
+## 🧪 Testes
+
+### Testes Disponíveis
+- **Testes Básicos**: Funcionalidades principais do chat
+- **Testes de Resiliência**: Recuperação de falhas
+- **Testes de Performance**: Carga moderada (otimizados para localhost)
+
+### Executar Testes
+```bash
+# Todos os testes
+npm test
+
+# Testes específicos
+npm run test:basic
+npm run test:resilience
+npm run test:performance
+```
+
+## 📊 Monitoramento e Métricas
+
+### Health Checks
+- Verificação automática de serviços a cada 5 segundos
+- Reinício automático em caso de falha
+- Logs detalhados de status
+
+### Métricas Disponíveis
+- Usuários online
+- Mensagens por segundo
+- Taxa de hit do cache
+- Latência de resposta
+- Status dos serviços
+
+### Logs
+```
+[SERVER] Servidor WebSocket iniciado na porta 8080
+[USER] Usuário 'alice' registrado com sucesso
+[ROOM] Sala 'geral' criada por alice
+[CACHE] Hit rate: 85.2%
+[BATCH] Processadas 23 mensagens em lote
+[WATCHDOG] Serviços saudáveis: WebSocket ✓ Redis ✓ MongoDB ✓
+```
+
+## 🔒 Segurança
+
+### Proteções Implementadas
+- **Rate Limiting**: Limite de requisições por usuário/IP
+- **Sanitização**: Remoção de HTML malicioso
+- **Validação**: Verificação de entrada de dados
+- **Autenticação**: Sistema seguro de login/registro
+- **Bloqueio**: Proteção contra spam e ataques
+
+### Configurações de Segurança
+```javascript
+// Rate Limiting
+message: 30/minuto
+auth: 5/5minutos
+join: 10/minuto
+create_room: 3/5minutos
+register: 3/10minutos
+
+// Sanitização
+maxMessageLength: 1000 caracteres
+allowedHTMLTags: ['b', 'i', 'em', 'strong', 'u', 'br']
+allowedEmojis: 200+ emojis verificados
+```
+
+## 🚀 Deploy
+
+### Produção
+```bash
+# Com watchdog (recomendado - padrão)
+npm start
+
+# Sem watchdog (apenas servidor)
+npm run start:server
+```
+
+### Docker (opcional)
+```dockerfile
+FROM node:16-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+EXPOSE 8080
+CMD ["npm", "start"]
+```
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📝 Licença
+
+Este projeto está sob a licença ISC. Veja o arquivo `LICENSE` para mais detalhes.
+
+## 🆘 Suporte
+
+Para suporte e dúvidas:
+- Abra uma issue no GitHub
+- Consulte a documentação dos eventos WebSocket
+- Verifique os logs do servidor para debugging
+
+## 🔄 Roadmap
+
+- [ ] Interface web administrativa
+- [ ] API REST para administração
+- [ ] Suporte a arquivos e mídia
+- [ ] Criptografia end-to-end
+- [ ] Sistema de moderação
+- [ ] Integração com sistemas externos
+- [ ] Métricas e analytics avançados
+- [ ] Suporte a múltiplos idiomas
+- [ ] Notificações push
+- [ ] Chat em grupo (mais de 2 usuários)
