@@ -1,7 +1,8 @@
 const WebSocket = require("ws");
 const redisClient = require("../config/redis");
-const { createPlayer, removePlayer } = require("./player");
+const { createPlayer, removePlayer, getPlayer } = require("./player");
 const { handleMessage } = require("./events");
+const universe = require("./universe");
 
 const GLOBAL_ROOM = "global_room";
 
@@ -38,3 +39,27 @@ wss.on("connection", async (ws) => {
     console.log("Cliente saiu:", ws.clientId);
   });
 });
+
+// Função para enviar updates periódicos para todos os clientes conectados
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN && ws.clientId) {
+      const player = getPlayer(ws.clientId);
+      if (player) {
+        ws.send(
+          JSON.stringify({
+            type: "update",
+            life: player.life,
+            shield: player.shield,
+            damage: player.damage,
+            speed: player.speed,
+            x: player.x,
+            y: player.y,
+            ms: player.ms,
+            universeSize: universe.getSize(),
+          })
+        );
+      }
+    }
+  });
+}, 200); // envia a cada 200ms (~5x por segundo)
