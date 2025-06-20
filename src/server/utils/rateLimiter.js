@@ -178,14 +178,14 @@ class RateLimiter {
     }
   }
 
-  middleware(ws, data) {
+  middleware(socket, data) {
     // DESABILITADO PARA TESTES - sempre retorna true
     return true;
     
     // Código original comentado:
     /*
-    const ip = ws.ip || 'unknown';
-    const username = ws.user?.username || 'anonymous';
+    const ip = socket.handshake.address || 'unknown';
+    const username = socket.user?.username || 'anonymous';
     
     let type = 'message';
     if (data.type === 'auth') type = 'auth';
@@ -196,13 +196,12 @@ class RateLimiter {
     const result = this.checkLimit(type, username, ip);
     
     if (!result.allowed) {
-      ws.send(JSON.stringify({
-        type: 'error',
+      socket.emit('error', {
         message: result.reason === 'blocked' 
           ? 'Acesso temporariamente bloqueado' 
           : 'Muitas requisições. Tente novamente em alguns instantes.',
         retryAfter: result.retryAfter
-      }));
+      });
       return false;
     }
 

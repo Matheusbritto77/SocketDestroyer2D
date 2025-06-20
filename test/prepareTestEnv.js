@@ -1,6 +1,7 @@
 require('dotenv').config();
 const redisClient = require('../src/config/redis');
 const mongoClient = require('../src/config/mongo');
+const pgClient = require('../src/config/postgres');
 
 async function cleanRedis() {
   try {
@@ -40,12 +41,29 @@ async function cleanMongo() {
   }
 }
 
+async function cleanPostgres() {
+  try {
+    console.log('[TEST-ENV] Iniciando limpeza do PostgreSQL...');
+    
+    // Remove dados de teste das tabelas
+    await pgClient.query('DELETE FROM room_members WHERE username LIKE \'%Test%\' OR username LIKE \'%Carol%\' OR username LIKE \'%Alice%\' OR username LIKE \'%Bob%\' OR username LIKE \'%Eve%\'');
+    await pgClient.query('DELETE FROM public_rooms WHERE name LIKE \'%Test%\' OR name LIKE \'%Sala de Teste%\'');
+    await pgClient.query('DELETE FROM registered_users WHERE email LIKE \'%test.com\' OR username LIKE \'%Carol%\' OR username LIKE \'%Alice%\' OR username LIKE \'%Bob%\' OR username LIKE \'%Eve%\'');
+    
+    console.log('[TEST-ENV] PostgreSQL limpo com sucesso!');
+  } catch (error) {
+    console.error('[TEST-ENV] Erro ao limpar PostgreSQL:', error);
+    throw error;
+  }
+}
+
 async function prepare() {
   console.log('[TEST-ENV] Iniciando preparação do ambiente de teste...');
   try {
     await Promise.all([
       cleanRedis(),
-      cleanMongo()
+      cleanMongo(),
+      cleanPostgres()
     ]);
     console.log('[TEST-ENV] Ambiente de teste preparado com sucesso!');
     process.exit(0);

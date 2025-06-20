@@ -1,4 +1,4 @@
-const WebSocket = require('ws');
+const { io } = require('socket.io-client');
 const { createClient } = require('redis');
 const { MongoClient } = require('mongodb');
 const { exec } = require('child_process');
@@ -94,21 +94,25 @@ class WatchdogMonitor {
   }
 
   async checkServices() {
-    // Verifica WebSocket
+    // Verifica Socket.IO
     try {
-      const ws = new WebSocket('ws://localhost:8080');
+      const socket = io('http://localhost:8080', {
+        timeout: 2000,
+        forceNew: true
+      });
+      
       await new Promise((resolve, reject) => {
-        ws.on('open', () => {
+        socket.on('connect', () => {
           this.healthChecks.server++;
-          ws.close();
+          socket.disconnect();
           resolve();
         });
-        ws.on('error', reject);
+        socket.on('connect_error', reject);
         setTimeout(reject, 2000);
       });
     } catch (error) {
       this.healthChecks.server = Math.max(0, this.healthChecks.server - 1);
-      console.error('[WATCHDOG] Erro ao verificar servidor WebSocket:', error.message);
+      console.error('[WATCHDOG] Erro ao verificar servidor Socket.IO:', error.message);
     }
 
     // Verifica Redis
@@ -143,7 +147,7 @@ class WatchdogMonitor {
   evaluateHealth() {
     const now = Date.now();
     const services = {
-      'Servidor WebSocket': this.healthChecks.server,
+      'Servidor Socket.IO': this.healthChecks.server,
       'Redis': this.healthChecks.redis,
       'MongoDB': this.healthChecks.mongo
     };
@@ -156,7 +160,7 @@ class WatchdogMonitor {
 
     // Verifica se algum serviço crítico está não saudável
     if (this.healthChecks.server < this.unhealthyThreshold) {
-      console.log('[WATCHDOG] Servidor WebSocket não está saudável!');
+      console.log('[WATCHDOG] Servidor Socket.IO não está saudável!');
       this.handleServerFailure();
     }
   }

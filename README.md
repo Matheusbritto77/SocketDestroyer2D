@@ -1,7 +1,7 @@
-# ChatSocket - Sistema de Chat em Tempo Real Avançado
+# ChatSocket - Sistema de Chat em Tempo Real Avançado com Socket.IO
 
 ## Descrição
-Sistema de chat em tempo real com suporte a salas públicas, mensagens privadas, autenticação permanente e temporária, utilizando WebSocket com otimizações de performance e resiliência.
+Sistema de chat em tempo real com suporte a salas públicas, mensagens privadas, autenticação permanente e temporária, utilizando Socket.IO com otimizações de performance e resiliência.
 
 ## 🚀 Funcionalidades Principais
 
@@ -24,7 +24,8 @@ Sistema de chat em tempo real com suporte a salas públicas, mensagens privadas,
 - **Rate Limiting**: Proteção contra spam e ataques
 - **Sanitização Avançada**: Suporte a HTML seguro e emojis
 - **Connection Pooling**: Gerenciamento eficiente de conexões
-- **Compressão WebSocket**: Redução de tráfego de rede
+- **Compressão Socket.IO**: Redução de tráfego de rede
+- **Adapter Redis**: Escalabilidade horizontal
 
 ### Resiliência e Monitoramento
 - **Watchdog Automático**: Monitoramento e reinício automático
@@ -32,72 +33,104 @@ Sistema de chat em tempo real com suporte a salas públicas, mensagens privadas,
 - **Health Checks**: Verificação contínua de serviços
 - **Recovery Automático**: Reconexão e sincronização de dados
 
-## 📋 Eventos WebSocket
+## 📋 Eventos Socket.IO
 
 ### Autenticação e Registro
-```json
+```javascript
 // Registro permanente
-{"type": "register", "email": "user@example.com", "password": "senha123", "username": "usuario"}
+socket.emit('register', {
+  email: 'user@example.com', 
+  password: 'senha123', 
+  username: 'usuario'
+});
 
 // Login permanente
-{"type": "login", "email": "user@example.com", "password": "senha123"}
+socket.emit('login', {
+  email: 'user@example.com', 
+  password: 'senha123'
+});
 
 // Autenticação temporária
-{"type": "auth", "username": "usuario_temp"}
+socket.emit('authenticate', {
+  username: 'usuario_temp'
+});
 ```
 
 ### Gerenciamento de Salas
-```json
+```javascript
 // Criar sala (apenas usuários registrados)
-{"type": "create_room", "name": "Minha Sala", "description": "Descrição da sala"}
+socket.emit('create_room', {
+  name: 'Minha Sala', 
+  description: 'Descrição da sala'
+});
 
 // Listar salas públicas
-{"type": "get_rooms"}
+socket.emit('get_rooms');
 
 // Entrar em sala
-{"type": "join_room", "room": "room_id"}
+socket.emit('join_room', { room: 'room_id' });
 
 // Sair de sala
-{"type": "leave_room", "room": "room_id"}
+socket.emit('leave_room', { room: 'room_id' });
 ```
 
 ### Mensagens e Status
-```json
+```javascript
 // Enviar mensagem
-{"type": "message", "content": "Olá, mundo! 😀", "room": "room_id"}
+socket.emit('send_message', {
+  content: 'Olá, mundo! 😀', 
+  room: 'room_id'
+});
 
 // Atualizar status
-{"type": "status", "status": "away"}
+socket.emit('update_status', { status: 'away' });
 
 // Indicar digitação
-{"type": "typing", "room": "room_id", "isTyping": true}
+socket.emit('typing', {
+  room: 'room_id', 
+  isTyping: true
+});
 
 // Ping para latência
-{"type": "ping"}
+socket.emit('ping_latency');
 ```
 
 ### Respostas do Servidor
-```json
+```javascript
 // Resposta de autenticação
-{"type": "auth_response", "success": true, "message": "Autenticado", "user": {...}}
+socket.on('auth_response', (data) => {
+  console.log(data.success, data.message, data.user);
+});
 
 // Lista de salas
-{"type": "rooms_list", "rooms": [...]}
+socket.on('rooms_list', (data) => {
+  console.log(data.rooms);
+});
 
 // Mensagem recebida
-{"type": "message", "from": "usuario", "content": "Olá!", "room": "room_id", "timestamp": 1234567890}
+socket.on('message', (data) => {
+  console.log(data.from, data.content, data.room, data.timestamp);
+});
 
 // Status de usuário
-{"type": "user_status", "username": "usuario", "status": "online"}
+socket.on('user_status', (data) => {
+  console.log(data.username, data.status);
+});
 
 // Indicador de digitação
-{"type": "typing_status", "room": "room_id", "username": "usuario", "isTyping": true}
+socket.on('typing_status', (data) => {
+  console.log(data.room, data.username, data.isTyping);
+});
 
 // Histórico de mensagens
-{"type": "message_history", "room": "room_id", "messages": [...]}
+socket.on('message_history', (data) => {
+  console.log(data.room, data.messages);
+});
 
 // Erro
-{"type": "error", "message": "Descrição do erro"}
+socket.on('error', (data) => {
+  console.log(data.message);
+});
 ```
 
 ## 🏗️ Arquitetura
@@ -111,9 +144,9 @@ src/
 │   ├── redis.js             # Configuração Redis (cache/tempo real)
 │   └── mongo.js             # Configuração MongoDB (histórico)
 ├── server/
-│   ├── index.js             # Servidor WebSocket
+│   ├── index.js             # Servidor Socket.IO
 │   ├── layers/
-│   │   ├── connection.js    # Gerenciamento de conexões
+│   │   ├── connection.js    # Gerenciamento de conexões Socket.IO
 │   │   ├── user.js          # Lógica de usuários e mensagens
 │   │   ├── room.js          # Gerenciamento de salas
 │   │   └── match.js         # Sistema de matchmaking
@@ -131,7 +164,7 @@ src/
 
 ### Banco de Dados
 - **PostgreSQL**: Usuários registrados, salas públicas, permissões
-- **Redis**: Cache de salas, mensagens recentes, filas
+- **Redis**: Cache de salas, mensagens recentes, filas, adapter Socket.IO
 - **MongoDB**: Histórico de mensagens, logs de atividade
 
 ## 🛠️ Instalação e Configuração
@@ -143,13 +176,13 @@ src/
 - MongoDB 4.4+
 
 ### Instalação
-   ```bash
+```bash
 # Clone o repositório
 git clone <repository-url>
 cd socketdestroyer2D
 
 # Instale as dependências
-   npm install
+npm install
 
 # Configure as variáveis de ambiente
 cp .env.example .env
@@ -231,12 +264,12 @@ npm run test:performance
 
 ### Logs
 ```
-[SERVER] Servidor WebSocket iniciado na porta 8080
+[SOCKET.IO] Servidor Socket.IO iniciado na porta 8080
 [USER] Usuário 'alice' registrado com sucesso
 [ROOM] Sala 'geral' criada por alice
 [CACHE] Hit rate: 85.2%
 [BATCH] Processadas 23 mensagens em lote
-[WATCHDOG] Serviços saudáveis: WebSocket ✓ Redis ✓ MongoDB ✓
+[WATCHDOG] Serviços saudáveis: Socket.IO ✓ Redis ✓ MongoDB ✓
 ```
 
 ## 🔒 Segurança
@@ -301,7 +334,7 @@ Este projeto está sob a licença ISC. Veja o arquivo `LICENSE` para mais detalh
 
 Para suporte e dúvidas:
 - Abra uma issue no GitHub
-- Consulte a documentação dos eventos WebSocket
+- Consulte a documentação dos eventos Socket.IO
 - Verifique os logs do servidor para debugging
 
 ## 🔄 Roadmap

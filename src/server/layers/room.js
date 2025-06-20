@@ -57,6 +57,7 @@ class RoomManager {
   // Registra um novo usuário
   async registerUser(email, password, username) {
     try {
+      console.log('[ROOM] Registrando usuário:', email, username);
       const bcrypt = require('bcryptjs');
       const passwordHash = await bcrypt.hash(password, 10);
 
@@ -66,8 +67,10 @@ class RoomManager {
         RETURNING id, email, username
       `, [email, passwordHash, username]);
 
+      console.log('[ROOM] Usuário registrado com sucesso:', result.rows[0]);
       return result.rows[0];
     } catch (error) {
+      console.error('[ROOM] Erro ao registrar usuário:', error);
       if (error.code === '23505') { // Unique violation
         throw new Error('Email ou username já está em uso');
       }
@@ -113,6 +116,7 @@ class RoomManager {
   // Cria uma nova sala pública
   async createPublicRoom(name, description, createdByUserId) {
     try {
+      console.log('[ROOM] Criando sala pública:', name, 'por usuário:', createdByUserId);
       const roomId = `room_${uuidv4().replace(/-/g, '')}`;
       
       const result = await pgClient.query(`
@@ -122,6 +126,7 @@ class RoomManager {
       `, [roomId, name, description, createdByUserId]);
 
       const room = result.rows[0];
+      console.log('[ROOM] Sala criada com sucesso:', room);
       
       // Adiciona ao cache
       cache.setRoom(roomId, {
@@ -137,6 +142,7 @@ class RoomManager {
 
       return room;
     } catch (error) {
+      console.error('[ROOM] Erro ao criar sala:', error);
       throw error;
     }
   }
@@ -144,6 +150,7 @@ class RoomManager {
   // Lista todas as salas públicas
   async getPublicRooms() {
     try {
+      console.log('[ROOM] Buscando salas públicas...');
       const result = await pgClient.query(`
         SELECT pr.*, COUNT(rm.username) as current_users
         FROM public_rooms pr
@@ -153,6 +160,7 @@ class RoomManager {
         ORDER BY pr.created_at DESC
       `);
 
+      console.log('[ROOM] Salas encontradas:', result.rows.length);
       return result.rows;
     } catch (error) {
       console.error('[ROOM] Erro ao buscar salas públicas:', error);

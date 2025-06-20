@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { createClient } = require('redis');
 const { MongoClient } = require('mongodb');
+const { io } = require('socket.io-client');
 const net = require('net');
 
 async function checkPort(port) {

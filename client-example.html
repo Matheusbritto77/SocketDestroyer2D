@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatSocket - Cliente de Exemplo</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .auth-section, .chat-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .chat-section {
+            display: none;
+        }
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            background: #f9f9f9;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .message.own {
+            background: #e3f2fd;
+            text-align: right;
+        }
+        .message.other {
+            background: #f1f1f1;
+        }
+        input, button {
+            margin: 5px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            color: #666;
+            font-size: 12px;
+        }
+        .error {
+            color: red;
+            background: #ffe6e6;
+            padding: 5px;
+            border-radius: 3px;
+            margin: 5px 0;
+        }
+        .success {
+            color: green;
+            background: #e6ffe6;
+            padding: 5px;
+            border-radius: 3px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ChatSocket - Cliente de Exemplo</h1>
+        
+        <!-- Seção de Autenticação -->
+        <div class="auth-section" id="authSection">
+            <h3>Autenticação</h3>
+            
+            <!-- Autenticação Temporária -->
+            <div>
+                <h4>Login Rápido (Temporário)</h4>
+                <input type="text" id="tempUsername" placeholder="Nome de usuário">
+                <button onclick="authenticateTemp()">Entrar</button>
+            </div>
+            
+            <hr>
+            
+            <!-- Registro -->
+            <div>
+                <h4>Registro</h4>
+                <input type="email" id="regEmail" placeholder="Email">
+                <input type="password" id="regPassword" placeholder="Senha">
+                <input type="text" id="regUsername" placeholder="Nome de usuário">
+                <button onclick="register()">Registrar</button>
+            </div>
+            
+            <!-- Login -->
+            <div>
+                <h4>Login</h4>
+                <input type="email" id="loginEmail" placeholder="Email">
+                <input type="password" id="loginPassword" placeholder="Senha">
+                <button onclick="login()">Entrar</button>
+            </div>
+            
+            <div id="authStatus"></div>
+        </div>
+        
+        <!-- Seção de Chat -->
+        <div class="chat-section" id="chatSection">
+            <h3>Chat</h3>
+            
+            <!-- Informações do Usuário -->
+            <div id="userInfo"></div>
+            
+            <!-- Salas -->
+            <div>
+                <h4>Salas</h4>
+                <button onclick="getRooms()">Listar Salas</button>
+                <button onclick="createRoom()">Criar Sala</button>
+                <div id="roomsList"></div>
+            </div>
+            
+            <!-- Chat -->
+            <div>
+                <h4>Mensagens</h4>
+                <div class="messages" id="messages"></div>
+                <input type="text" id="messageInput" placeholder="Digite sua mensagem..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Enviar</button>
+                <button onclick="joinMatchQueue()">Entrar na Fila de Match</button>
+            </div>
+            
+            <!-- Status -->
+            <div class="status" id="status"></div>
+        </div>
+    </div>
+
+    <script>
+        // Conecta ao servidor Socket.IO
+        const socket = io('http://localhost:8080');
+        let currentUser = null;
+        let currentRoom = null;
+
+        // Eventos de conexão
+        socket.on('connect', () => {
+            updateStatus('Conectado ao servidor');
+        });
+
+        socket.on('disconnect', () => {
+            updateStatus('Desconectado do servidor');
+        });
+
+        socket.on('connect_error', (error) => {
+            updateStatus('Erro de conexão: ' + error.message);
+        });
+
+        // Eventos de autenticação
+        socket.on('auth_response', (data) => {
+            if (data.success) {
+                currentUser = data.user;
+                showSuccess('Autenticado com sucesso!');
+                showChatSection();
+                updateUserInfo();
+            } else {
+                showError('Erro na autenticação: ' + data.message);
+            }
+        });
+
+        socket.on('register_response', (data) => {
+            if (data.success) {
+                showSuccess('Registrado com sucesso!');
+            } else {
+                showError('Erro no registro: ' + data.message);
+            }
+        });
+
+        socket.on('login_response', (data) => {
+            if (data.success) {
+                currentUser = data.user;
+                showSuccess('Login realizado com sucesso!');
+                showChatSection();
+                updateUserInfo();
+            } else {
+                showError('Erro no login: ' + data.message);
+            }
+        });
+
+        // Eventos de sala
+        socket.on('room_joined', (data) => {
+            currentRoom = data.room.roomId || data.room.room_id || data.room;
+            showSuccess('Entrou na sala: ' + currentRoom);
+            addMessage('Sistema', 'Você entrou na sala', 'system');
+        });
+
+        socket.on('room_created', (data) => {
+            showSuccess('Sala criada: ' + data.name);
+        });
+
+        socket.on('rooms_list', (data) => {
+            displayRooms(data.rooms);
+        });
+
+        // Eventos de mensagem
+        socket.on('message', (data) => {
+            const isOwn = data.from === currentUser?.username;
+            addMessage(data.from, data.content, isOwn ? 'own' : 'other');
+        });
+
+        socket.on('message_history', (data) => {
+            data.messages.forEach(msg => {
+                const isOwn = msg.from === currentUser?.username;
+                addMessage(msg.from, msg.content, isOwn ? 'own' : 'other');
+            });
+        });
+
+        socket.on('typing_status', (data) => {
+            updateStatus(`${data.username} está digitando...`);
+        });
+
+        // Eventos de matchmaking
+        socket.on('queue_joined', (data) => {
+            showSuccess('Entrou na fila de matchmaking');
+        });
+
+        socket.on('partner_left', () => {
+            showError('Seu parceiro saiu da sala');
+            currentRoom = null;
+        });
+
+        // Eventos de erro
+        socket.on('error', (data) => {
+            showError(data.message);
+        });
+
+        // Funções de autenticação
+        function authenticateTemp() {
+            const username = document.getElementById('tempUsername').value;
+            if (!username) {
+                showError('Digite um nome de usuário');
+                return;
+            }
+            socket.emit('authenticate', { username });
+        }
+
+        function register() {
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            const username = document.getElementById('regUsername').value;
+            
+            if (!email || !password || !username) {
+                showError('Preencha todos os campos');
+                return;
+            }
+            
+            socket.emit('register', { email, password, username });
+        }
+
+        function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!email || !password) {
+                showError('Preencha email e senha');
+                return;
+            }
+            
+            socket.emit('login', { email, password });
+        }
+
+        // Funções de chat
+        function getRooms() {
+            socket.emit('get_rooms');
+        }
+
+        function createRoom() {
+            const name = prompt('Nome da sala:');
+            const description = prompt('Descrição da sala:');
+            
+            if (name) {
+                socket.emit('create_room', { name, description });
+            }
+        }
+
+        function joinRoom(roomId) {
+            socket.emit('join_room', { room: roomId });
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+            
+            if (!content || !currentRoom) {
+                showError('Digite uma mensagem e entre em uma sala');
+                return;
+            }
+            
+            socket.emit('send_message', { content, room: currentRoom });
+            input.value = '';
+        }
+
+        function joinMatchQueue() {
+            socket.emit('join_match_queue');
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // Funções auxiliares
+        function showChatSection() {
+            document.getElementById('authSection').style.display = 'none';
+            document.getElementById('chatSection').style.display = 'block';
+        }
+
+        function updateUserInfo() {
+            const userInfo = document.getElementById('userInfo');
+            userInfo.innerHTML = `
+                <strong>Usuário:</strong> ${currentUser.username}
+                ${currentUser.email ? `<br><strong>Email:</strong> ${currentUser.email}` : ''}
+                ${currentRoom ? `<br><strong>Sala atual:</strong> ${currentRoom}` : ''}
+            `;
+        }
+
+        function addMessage(from, content, type) {
+            const messages = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.innerHTML = `<strong>${from}:</strong> ${content}`;
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function displayRooms(rooms) {
+            const roomsList = document.getElementById('roomsList');
+            roomsList.innerHTML = '<h5>Salas disponíveis:</h5>';
+            
+            rooms.forEach(room => {
+                const roomDiv = document.createElement('div');
+                roomDiv.innerHTML = `
+                    <strong>${room.name}</strong> - ${room.description || 'Sem descrição'}
+                    <button onclick="joinRoom('${room.room_id}')">Entrar</button>
+                `;
+                roomsList.appendChild(roomDiv);
+            });
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        function showError(message) {
+            const status = document.getElementById('authStatus');
+            status.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        function showSuccess(message) {
+            const status = document.getElementById('authStatus');
+            status.innerHTML = `<div class="success">${message}</div>`;
+        }
+    </script>
+</body>
+</html> 

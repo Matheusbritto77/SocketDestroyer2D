@@ -1,4 +1,5 @@
 const resilientStorage = require('./resilientStorage');
+const mongoClient = require('../../config/mongo');
 
 class BatchProcessor {
   constructor() {
@@ -67,8 +68,8 @@ class BatchProcessor {
     try {
       // Salva no MongoDB em lote
       if (resilientStorage.isMongoHealthy) {
-        const db = resilientStorage.mongoClient.db();
-        await db.collection('room_messages').insertMany(
+        const db = mongoClient.db();
+        await db.collection(`messages_${room}`).insertMany(
           messages.map(msg => ({
             roomId: room,
             ...msg

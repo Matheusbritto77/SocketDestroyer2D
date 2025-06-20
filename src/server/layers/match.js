@@ -12,34 +12,34 @@ let matchQueueCache = [];
 let roomsCache = new Map();
 let onlineCountCache = 0;
 
-async function joinMatchQueue(ws, wss) {
+async function joinMatchQueue(socket, io) {
   try {
-    matchQueueCache.push(ws.user.name);
+    matchQueueCache.push(socket.user.username);
     await resilientStorage.set(MATCH_QUEUE_KEY, matchQueueCache);
     
-    ws.user.roomId = null;
-    ws.send(JSON.stringify({ type: 'queue', message: 'Aguardando outro usuário para formar uma sala...' }));
-    await updateOnlineCount(wss);
-    console.log(`[MATCH] Usuário ${ws.user.name} entrou na fila.`);
+    socket.user.roomId = null;
+    socket.emit('queue_joined', { message: 'Aguardando outro usuário para formar uma sala...' });
+    await updateOnlineCount(io);
+    console.log(`[MATCH] Usuário ${socket.user.username} entrou na fila.`);
   } catch (error) {
     console.error('[MATCH] Erro ao entrar na fila:', error);
-    ws.send(JSON.stringify({ type: 'error', message: 'Erro ao entrar na fila. Tente novamente.' }));
+    socket.emit('error', { message: 'Erro ao entrar na fila. Tente novamente.' });
   }
 }
 
-async function leaveMatchQueue(ws) {
+async function leaveMatchQueue(socket) {
   try {
-    if (!ws.user) return;
-    matchQueueCache = matchQueueCache.filter(name => name !== ws.user.name);
+    if (!socket.user) return;
+    matchQueueCache = matchQueueCache.filter(name => name !== socket.user.username);
     await resilientStorage.set(MATCH_QUEUE_KEY, matchQueueCache);
     await updateOnlineCount();
-    console.log(`[MATCH] Usuário ${ws.user.name} saiu da fila.`);
+    console.log(`[MATCH] Usuário ${socket.user.username} saiu da fila.`);
   } catch (error) {
     console.error('[MATCH] Erro ao sair da fila:', error);
   }
 }
 
-async function tryMatchUsers(wss) {
+async function tryMatchUsers(io) {
   try {
     while (matchQueueCache.length >= 2) {
       const ws1Name = matchQueueCache.shift();
@@ -50,10 +50,10 @@ async function tryMatchUsers(wss) {
         break;
       }
 
-      const ws1 = findWSByName(wss, ws1Name);
-      const ws2 = findWSByName(wss, ws2Name);
+      const socket1 = findSocketByName(io, ws1Name);
+      const socket2 = findSocketByName(io, ws2Name);
       
-      if (!ws1 || !ws2) {
+      if (!socket1 || !socket2) {
         console.log(`[MATCH] Falha ao encontrar sockets para ${ws1Name} e ${ws2Name}`);
         // Devolve os usuários para a fila se não encontrar os sockets
         if (ws1Name) matchQueueCache.push(ws1Name);
@@ -66,10 +66,16 @@ async function tryMatchUsers(wss) {
       roomsCache.set(roomId, roomData);
       await resilientStorage.set(`${ROOMS_KEY}:${roomId}`, roomData);
       
-      ws1.user.roomId = roomId;
-      ws2.user.roomId = roomId;
-      ws1.send(JSON.stringify({ type: 'room_joined', roomId, partner: ws2.user.name }));
-      ws2.send(JSON.stringify({ type: 'room_joined', roomId, partner: ws1.user.name }));
+      // Adiciona ambos os usuários à room do Socket.IO
+      socket1.join(roomId);
+      socket2.join(roomId);
+      
+      socket1.user.roomId = roomId;
+      socket2.user.roomId = roomId;
+      
+      socket1.emit('room_joined', { roomId, partner: socket2.user.username });
+      socket2.emit('room_joined', { roomId, partner: socket1.user.username });
+      
       console.log(`[MATCH] Sala criada: ${roomId} (${ws1Name} <-> ${ws2Name})`);
     }
 
@@ -80,20 +86,21 @@ async function tryMatchUsers(wss) {
   }
 }
 
-async function removeFromRoom(wss, ws) {
+async function removeFromRoom(io, socket) {
   try {
-    const roomId = ws.user && ws.user.roomId;
+    const roomId = socket.user && socket.user.roomId;
     if (!roomId) return;
 
     const users = roomsCache.get(roomId) || await resilientStorage.get(`${ROOMS_KEY}:${roomId}`);
     if (!users) return;
 
     for (const name of users) {
-      const client = findWSByName(wss, name);
-      if (client) {
-        client.user.roomId = null;
-        client.send(JSON.stringify({ type: 'partner_left' }));
-        await joinMatchQueue(client, wss);
+      const clientSocket = findSocketByName(io, name);
+      if (clientSocket) {
+        clientSocket.user.roomId = null;
+        clientSocket.leave(roomId);
+        clientSocket.emit('partner_left');
+        await joinMatchQueue(clientSocket, io);
         console.log(`[MATCH] Usuário ${name} removido da sala ${roomId} e voltou para fila.`);
       }
     }
@@ -106,17 +113,13 @@ async function removeFromRoom(wss, ws) {
   }
 }
 
-async function sendToRoom(wss, roomId, message) {
+async function sendToRoom(io, roomId, message) {
   try {
     const users = roomsCache.get(roomId) || await resilientStorage.get(`${ROOMS_KEY}:${roomId}`);
     if (!users) return;
 
-    for (const name of users) {
-      const client = findWSByName(wss, name);
-      if (client && client.readyState === 1) {
-        client.send(JSON.stringify(message));
-      }
-    }
+    // Usa Socket.IO rooms para broadcast
+    io.to(roomId).emit('message', message);
 
     if (message.type === 'chat') {
       await resilientStorage.saveMessage(roomId, message);
@@ -127,29 +130,23 @@ async function sendToRoom(wss, roomId, message) {
   }
 }
 
-function findWSByName(wss, name) {
-  for (const client of wss.clients) {
-    if (client.user && client.user.name === name) return client;
+function findSocketByName(io, name) {
+  // Busca o socket pelo nome do usuário
+  for (const [socketId, socket] of io.sockets.sockets) {
+    if (socket.user && socket.user.username === name) return socket;
   }
   return null;
 }
 
-async function updateOnlineCount(wss) {
+async function updateOnlineCount(io) {
   try {
-    if (!wss) return;
-    let count = 0;
-    for (const client of wss.clients) {
-      if (client.user) count++;
-    }
+    if (!io) return;
+    const count = io.engine.clientsCount;
     onlineCountCache = count;
     await resilientStorage.set(ONLINE_USERS_KEY, count);
     
     // Notifica todos os clientes
-    for (const client of wss.clients) {
-      if (client.readyState === 1) { // Verifica se o cliente ainda está conectado
-        client.send(JSON.stringify({ type: 'online_count', count }));
-      }
-    }
+    io.emit('online_count', { count });
     console.log(`[ONLINE] Usuários online: ${count}`);
   } catch (error) {
     console.error('[MATCH] Erro ao atualizar contagem de usuários:', error);
